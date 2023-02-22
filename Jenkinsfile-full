@@ -3,6 +3,7 @@ pipeline {
     environment {
         //be sure to replace "willbla" with your own Docker Hub username
         DOCKER_IMAGE_NAME = "willbla/train-schedule"
+        CANARY_REPLICAS = 0
     }
     stages {
         stage('Build') {
@@ -51,23 +52,22 @@ pipeline {
                     configs: 'train-schedule-kube-canary.yml',
                     enableConfigSubstitution: true
                 )
+                script{
+                    sleep(time: 5)
+                    def response = httpRequest '$KUBE_MASTER_IP:8081'
+                    if (response.status != 200){
+                        error('The response was not 200 OK')
+                    }
+                }
+               
             }
         }
         stage('DeployToProduction') {
             when {
                 branch 'master'
             }
-            environment { 
-                CANARY_REPLICAS = 0
-            }
             steps {
-                input 'Deploy to Production?'
                 milestone(1)
-                kubernetesDeploy(
-                    kubeconfigId: 'kubeconfig',
-                    configs: 'train-schedule-kube-canary.yml',
-                    enableConfigSubstitution: true
-                )
                 kubernetesDeploy(
                     kubeconfigId: 'kubeconfig',
                     configs: 'train-schedule-kube.yml',
@@ -75,5 +75,12 @@ pipeline {
                 )
             }
         }
+    }
+    post {
+    kubernetesDeploy(
+                    kubeconfigId: 'kubeconfig',
+                    configs: 'train-schedule-kube-canary.yml',
+                    enableConfigSubstitution: true
+                )
     }
 }
